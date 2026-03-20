@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.presenceguard.daemon</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/Users/YOUR_USER/PresenceGuard/.venv/bin/python3</string>
+        <string>/Users/YOUR_USER/PresenceGuard/main.py</string>
+        <string>--config</string>
+        <string>/Users/YOUR_USER/PresenceGuard/config.yaml</string>
+    </array>
+
+    <key>WorkingDirectory</key>
+    <string>/Users/YOUR_USER/PresenceGuard</string>
+
+    <key>RunAtLoad</key>
+    <true/>
+
+    <key>KeepAlive</key>
+    <true/>
+
+    <key>ProcessType</key>
+    <string>Background</string>
+
+    <key>StandardOutPath</key>
+    <string>/Users/YOUR_USER/Library/Logs/PresenceGuard.stdout.log</string>
+
+    <key>StandardErrorPath</key>
+    <string>/Users/YOUR_USER/Library/Logs/PresenceGuard.stderr.log</string>
+</dict>
+</plist>

@@ -1,0 +1,37 @@
+app:
+  poll_interval_seconds: 1.0
+  log_level: INFO
+  debug: false
+  test_mode: false
+
+bluetooth:
+  # Set at least one of device_name or device_mac.
+  device_name: "My iPhone"
+  device_mac: "AA-BB-CC-DD-EE-FF"
+  away_timeout_seconds: 15
+  command_timeout_seconds: 5
+  # `system_profiler` is heavy, so cache fallback results for a few seconds.
+  fallback_cache_seconds: 8
+
+lock:
+  enabled: true
+  # auto -> CGSession first, then AppleScript fallback.
+  method: auto
+  command_timeout_seconds: 5
+  # Ignore synthetic events caused by the lock action itself.
+  ignore_input_after_lock_seconds: 2.5
+
+notify:
+  provider: ntfy
+  cooldown_seconds: 60
+  timeout_seconds: 10
+  ntfy:
+    server_url: "https://ntfy.sh"
+    topic: "presenceguard-demo"
+    priority: urgent
+    tags:
+      - warning
+      - computer
+  telegram:
+    bot_token: ""
+    chat_id: ""
