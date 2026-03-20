@@ -37,6 +37,24 @@ class LockConfig:
 
 
 @dataclass
+class UsbConfig:
+    enabled: bool = True
+    poll_interval_seconds: float = 5.0
+    command_timeout_seconds: float = 8.0
+    ignore_names: list[str] = field(default_factory=list)
+
+
+@dataclass
+class CameraConfig:
+    enabled: bool = False
+    method: str = "auto"
+    command_timeout_seconds: float = 15.0
+    save_directory: str = "/tmp/presenceguard-captures"
+    ffmpeg_input: str = "0:none"
+    retain_local_copy: bool = False
+
+
+@dataclass
 class NtfyConfig:
     server_url: str = "https://ntfy.sh"
     topic: str = ""
@@ -64,6 +82,8 @@ class AppConfig:
     app: AppSettings = field(default_factory=AppSettings)
     bluetooth: BluetoothConfig = field(default_factory=BluetoothConfig)
     lock: LockConfig = field(default_factory=LockConfig)
+    usb: UsbConfig = field(default_factory=UsbConfig)
+    camera: CameraConfig = field(default_factory=CameraConfig)
     notify: NotifyConfig = field(default_factory=NotifyConfig)
 
 
@@ -78,6 +98,8 @@ def load_config(path: Path) -> AppConfig:
         app=_load_app_settings(raw.get("app", {})),
         bluetooth=_load_bluetooth_settings(raw.get("bluetooth", {})),
         lock=_load_lock_settings(raw.get("lock", {})),
+        usb=_load_usb_settings(raw.get("usb", {})),
+        camera=_load_camera_settings(raw.get("camera", {})),
         notify=_load_notify_settings(raw.get("notify", {})),
     )
 
@@ -121,6 +143,26 @@ def _load_lock_settings(data: dict[str, Any]) -> LockConfig:
         method=str(data.get("method", "auto")),
         command_timeout_seconds=float(data.get("command_timeout_seconds", 5.0)),
         ignore_input_after_lock_seconds=float(data.get("ignore_input_after_lock_seconds", 2.5)),
+    )
+
+
+def _load_usb_settings(data: dict[str, Any]) -> UsbConfig:
+    return UsbConfig(
+        enabled=bool(data.get("enabled", True)),
+        poll_interval_seconds=float(data.get("poll_interval_seconds", 5.0)),
+        command_timeout_seconds=float(data.get("command_timeout_seconds", 8.0)),
+        ignore_names=list(data.get("ignore_names", [])),
+    )
+
+
+def _load_camera_settings(data: dict[str, Any]) -> CameraConfig:
+    return CameraConfig(
+        enabled=bool(data.get("enabled", False)),
+        method=str(data.get("method", "auto")),
+        command_timeout_seconds=float(data.get("command_timeout_seconds", 15.0)),
+        save_directory=str(data.get("save_directory", "/tmp/presenceguard-captures")),
+        ffmpeg_input=str(data.get("ffmpeg_input", "0:none")),
+        retain_local_copy=bool(data.get("retain_local_copy", False)),
     )
 
 

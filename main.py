@@ -11,10 +11,12 @@ from pathlib import Path
 from typing import Optional
 
 from bluetooth import BluetoothPresenceDetector
+from camera import CameraCapture
 from input_monitor import InputActivityMonitor
 from locker import ScreenLocker
 from notifier import NotificationManager
 from settings import AppConfig, load_config
+from usb_monitor import UsbDeviceMonitor
 
 
 class PresenceState(str, Enum):
@@ -47,6 +49,8 @@ class PresenceGuardDaemon:
 
         self.detector = BluetoothPresenceDetector(config.bluetooth)
         self.input_monitor = InputActivityMonitor()
+        self.usb_monitor = UsbDeviceMonitor(config.usb)
+        self.camera = CameraCapture(config.camera, test_mode=test_mode)
         self.locker = ScreenLocker(config.lock, no_lock=no_lock, test_mode=test_mode)
         self.notifier = NotificationManager(config.notify, test_mode=test_mode)
 
@@ -54,6 +58,7 @@ class PresenceGuardDaemon:
         self.locked_at: Optional[float] = None
         self.ignore_input_until = 0.0
         self.last_processed_activity_at = 0.0
+        self.reported_usb_fingerprints: set[str] = set()
 
     def start(self) -> None:
         self.logger.info(
@@ -62,6 +67,7 @@ class PresenceGuardDaemon:
             self.config.bluetooth.away_timeout_seconds,
             self.config.app.poll_interval_seconds,
         )
+        self.usb_monitor.refresh_baseline(force=True)
         self.input_monitor.start()
         self._install_signal_handlers()
         self.run()
@@ -96,6 +102,7 @@ class PresenceGuardDaemon:
             )
 
         if self.state == PresenceState.PRESENT:
+            self.usb_monitor.refresh_baseline()
             if not effective_present:
                 self._enter_away(now)
             return
@@ -105,9 +112,12 @@ class PresenceGuardDaemon:
                 self._transition(PresenceState.PRESENT, "phone detected nearby again")
                 self.locked_at = None
                 self.ignore_input_until = 0.0
+                self.reported_usb_fingerprints.clear()
+                self.usb_monitor.refresh_baseline(force=True)
                 return
 
             self._handle_locked_activity(now)
+            self._handle_locked_usb()
             return
 
         if self.state == PresenceState.AWAY:
@@ -127,6 +137,7 @@ class PresenceGuardDaemon:
         self.ignore_input_until = now + self.config.lock.ignore_input_after_lock_seconds
         current_activity = self.input_monitor.get_last_activity()
         self.last_processed_activity_at = current_activity.when if current_activity else now
+        self.reported_usb_fingerprints.clear()
         self._transition(
             PresenceState.LOCKED,
             f"screen lock issued success={lock_successful}",
@@ -154,10 +165,41 @@ class PresenceGuardDaemon:
             activity.source,
             now - (self.locked_at or now),
         )
-        self.notifier.send_intrusion_alert(
-            source=activity.source,
-            target_label=self.config.bluetooth.target_label,
+        self._emit_intrusion(source=activity.source, details="Keyboard or mouse activity detected.")
+
+    def _handle_locked_usb(self) -> None:
+        new_devices = self.usb_monitor.get_new_devices()
+        unreported_devices = [device for device in new_devices if device.fingerprint not in self.reported_usb_fingerprints]
+        if not unreported_devices:
+            return
+
+        for device in unreported_devices:
+            self.reported_usb_fingerprints.add(device.fingerprint)
+
+        description = ", ".join(device.describe() for device in unreported_devices)
+        self.logger.warning("usb intrusion detected devices=%s", description)
+        self._emit_intrusion(
+            source="usb_attach",
+            details=f"New USB device(s) connected: {description}",
         )
+
+    def _emit_intrusion(self, *, source: str, details: str) -> None:
+        if not self.notifier.can_send_intrusion_alert():
+            return
+
+        photo_path: Path | None = None
+        if self.notifier.supports_photo():
+            photo_path = self.camera.capture_intrusion_photo()
+
+        try:
+            self.notifier.send_intrusion_alert(
+                source=source,
+                target_label=self.config.bluetooth.target_label,
+                details=details,
+                photo_path=photo_path,
+            )
+        finally:
+            self.camera.cleanup(photo_path)
 
     def _transition(self, new_state: PresenceState, reason: str) -> None:
         old_state = self.state

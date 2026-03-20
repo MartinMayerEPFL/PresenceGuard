@@ -1,6 +1,6 @@
 # PresenceGuard
 
-PresenceGuard is a macOS user-session security daemon that locks the screen when your phone is no longer nearby, then alerts you if keyboard or mouse activity occurs while you are still absent.
+PresenceGuard is a macOS user-session security daemon that locks the screen when your phone is no longer nearby, then alerts you if keyboard, mouse, or USB activity occurs while you are still absent.
 
 It is intentionally privacy-preserving:
 
@@ -16,6 +16,8 @@ It is intentionally privacy-preserving:
 - Native screen locking with `CGSession -suspend`.
 - AppleScript fallback lock path with `Ctrl+Cmd+Q`.
 - Keyboard and mouse activity detection using `pynput`.
+- USB device attachment detection using `system_profiler SPUSBDataType`.
+- Optional intrusion photo capture with `imagesnap` or `ffmpeg`.
 - Modular notifications: `ntfy`, Telegram, or log-only test mode.
 - Cooldown logic to avoid duplicate alerts.
 - `launchd` LaunchAgent support for background startup.
@@ -27,6 +29,8 @@ It is intentionally privacy-preserving:
 - `input_monitor.py`: keyboard and mouse activity timestamps.
 - `locker.py`: macOS screen locking.
 - `notifier.py`: notification providers.
+- `usb_monitor.py`: USB inventory polling and delta detection.
+- `camera.py`: optional webcam capture.
 - `settings.py`: YAML config loading and validation.
 - `config.yaml`: sample configuration.
 - `launchd/com.presenceguard.daemon.plist`: sample LaunchAgent.
@@ -43,6 +47,7 @@ Transitions:
 2. `AWAY -> LOCKED` immediately after a lock command is issued.
 3. `LOCKED -> PRESENT` when the configured phone becomes present again.
 4. While in `LOCKED`, any new keyboard or mouse activity sends an alert if the phone is still absent.
+5. While in `LOCKED`, any newly attached USB device also sends an alert.
 
 ## Requirements
 
@@ -50,12 +55,21 @@ Transitions:
 - Python 3.9+.
 - `PyYAML` and `pynput` from `requirements.txt`.
 - Optional but recommended: `blueutil` for faster Bluetooth checks.
+- Optional for photo capture: `imagesnap` or `ffmpeg`.
 
 Install `blueutil` with Homebrew:
 
 ```bash
 brew install blueutil
 ```
+
+Optional camera tools:
+
+```bash
+brew install imagesnap
+```
+
+If you already have `ffmpeg` with `avfoundation` support, PresenceGuard can use that as a fallback.
 
 ## Installation
 
@@ -71,7 +85,8 @@ pip install -r requirements.txt
 
 - Set `bluetooth.device_mac` to your phone MAC address when possible.
 - Optionally set `bluetooth.device_name`.
-- Set `notify.ntfy.topic` or configure Telegram.
+- If you want photo delivery, set `notify.provider: telegram` and fill `telegram.bot_token` and `telegram.chat_id`.
+- Enable `camera.enabled: true` only after Camera permission is granted.
 
 3. Run in test mode first:
 
@@ -95,12 +110,14 @@ Grant these in `System Settings -> Privacy & Security`:
 
 - `Input Monitoring`: allow the Python interpreter you run with, or your terminal app during manual testing.
 - `Accessibility`: allow the same interpreter or terminal app.
+- `Camera`: allow the capture backend you use (`imagesnap`, `ffmpeg`, or the host app that triggers the prompt) if you enable photo capture.
 
 Notes:
 
 - If you launch the daemon with `launchd`, macOS may attribute permissions to the Python interpreter path used in the plist, not just Terminal.
 - `CGSession -suspend` usually does not need extra automation privileges.
 - The AppleScript fallback may require Accessibility access for `osascript` / `System Events`.
+- Camera access is only required if `camera.enabled: true`.
 
 ## Bluetooth detection behavior
 
@@ -133,6 +150,22 @@ osascript -e 'tell application "System Events" to keystroke "q" using {control d
 
 This locks the session without terminating user-space processes. Background scripts, shells, and long-running jobs continue to run.
 
+## USB intrusion detection
+
+PresenceGuard maintains a baseline of USB devices while you are present. Once the machine is in `LOCKED`, any newly attached USB device is treated as an intrusion event.
+
+This covers cases such as:
+
+- a USB keyboard or mouse being plugged in
+- a USB flash drive being inserted
+- a USB Ethernet adapter or hub appearing
+
+Operational notes:
+
+- USB changes are detected by polling `system_profiler SPUSBDataType -json`.
+- Built-in internal devices become part of the normal baseline and do not trigger alerts by themselves.
+- If you connect a legitimate USB device while you are present, it becomes part of the baseline automatically.
+
 ## Notification configuration
 
 ### ntfy
@@ -156,6 +189,28 @@ notify:
     bot_token: "123456:ABCDEF"
     chat_id: "12345678"
 ```
+
+When `provider=telegram`, PresenceGuard can attach the intrusion photo if camera capture is enabled and succeeds.
+
+## Camera capture
+
+Example configuration:
+
+```yaml
+camera:
+  enabled: true
+  method: auto
+  save_directory: "/tmp/presenceguard-captures"
+  ffmpeg_input: "0:none"
+  retain_local_copy: false
+```
+
+Behavior:
+
+- `auto` tries `imagesnap` first, then `ffmpeg`.
+- If photo capture fails, the text alert is still sent.
+- Photos are deleted after sending unless `retain_local_copy: true`.
+- Photo attachment is only used by the Telegram notifier. `ntfy` remains text-only.
 
 ## CLI flags
 
@@ -208,6 +263,8 @@ Common checks:
 - `blueutil --connected`
 - `blueutil --is-connected AA-BB-CC-DD-EE-FF`
 - `system_profiler SPBluetoothDataType`
+- `system_profiler SPUSBDataType -json -detailLevel mini`
+- `ffmpeg -f avfoundation -list_devices true -i ""`
 - `tail -f ~/Library/Logs/PresenceGuard.stdout.log`
 - `tail -f ~/Library/Logs/PresenceGuard.stderr.log`
 

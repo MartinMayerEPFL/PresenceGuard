@@ -6,8 +6,8 @@ app:
 
 bluetooth:
   # Set at least one of device_name or device_mac.
-  device_name: "My iPhone"
-  device_mac: "AA-BB-CC-DD-EE-FF"
+  device_name: "Martin iPhone"
+  device_mac: "XX:XX:XX:XX:XX:XX"
   away_timeout_seconds: 15
   command_timeout_seconds: 5
   # `system_profiler` is heavy, so cache fallback results for a few seconds.
@@ -20,6 +20,22 @@ lock:
   command_timeout_seconds: 5
   # Ignore synthetic events caused by the lock action itself.
   ignore_input_after_lock_seconds: 2.5
+
+usb:
+  enabled: true
+  poll_interval_seconds: 5
+  command_timeout_seconds: 8
+  ignore_names: []
+
+camera:
+  enabled: false
+  # auto -> imagesnap first, then ffmpeg fallback.
+  method: auto
+  command_timeout_seconds: 15
+  save_directory: "/tmp/presenceguard-captures"
+  # For ffmpeg/avfoundation, video device 0 and no audio by default.
+  ffmpeg_input: "0:none"
+  retain_local_copy: false
 
 notify:
   provider: ntfy
